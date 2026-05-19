@@ -23,14 +23,18 @@ class CurrentWeather {
     required this.humidity,
     required this.windSpeedKmh,
     required this.weatherCode,
-    required this.time,
+    required this.localTime,
+    required this.timezoneAbbreviation,
   });
 
   final double temperatureC;
   final int humidity;
   final double windSpeedKmh;
   final int weatherCode;
-  final DateTime time;
+
+  /// Current date/time in the weather location's timezone (from Open-Meteo).
+  final DateTime localTime;
+  final String timezoneAbbreviation;
 }
 
 class DailyForecast {
@@ -41,6 +45,7 @@ class DailyForecast {
     required this.weatherCode,
   });
 
+  /// Calendar date in the location's timezone.
   final DateTime date;
   final double maxTempC;
   final double minTempC;
@@ -52,9 +57,15 @@ class WeatherBundle {
     required this.location,
     required this.current,
     required this.daily,
+    required this.timezone,
+    required this.timezoneAbbreviation,
   });
 
   final CityLocation location;
   final CurrentWeather current;
   final List<DailyForecast> daily;
+
+  /// IANA timezone id, e.g. `America/New_York`.
+  final String timezone;
+  final String timezoneAbbreviation;
 }

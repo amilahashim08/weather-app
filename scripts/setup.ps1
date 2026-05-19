@@ -34,6 +34,18 @@ if (-not $flutter) {
 
 Write-Host "Using Flutter: $flutter" -ForegroundColor Green
 
+$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "D:\Android\Sdk" }
+$jbr = "C:\Program Files\Android\Android Studio\jbr"
+if (Test-Path $sdk) {
+    $env:ANDROID_HOME = $sdk
+    Write-Host "ANDROID_HOME: $sdk" -ForegroundColor Gray
+}
+if (Test-Path $jbr) {
+    $env:JAVA_HOME = $jbr
+    Write-Host "JAVA_HOME: $jbr" -ForegroundColor Gray
+    & $flutter config --jdk-dir="$jbr" 2>$null
+}
+
 # Generate android/ios/web folders if missing
 if (-not (Test-Path "android")) {
     Write-Host "Generating platform folders (flutter create)..." -ForegroundColor Cyan

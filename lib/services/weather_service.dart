@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../models/weather.dart';
+import '../utils/timezone_utils.dart';
 
-/// API layer (similar to fetch/axios services in React Native).
-/// Uses Open-Meteo — free, no API key required.
+/// API layer — uses Open-Meteo (free, no API key required).
 class WeatherService {
   static const _geocodingBase =
       'https://geocoding-api.open-meteo.com/v1/search';
+  static const _reverseGeocodingBase =
+      'https://geocoding-api.open-meteo.com/v1/reverse';
   static const _forecastBase = 'https://api.open-meteo.com/v1/forecast';
+  static const _timeout = Duration(seconds: 20);
 
   Future<List<CityLocation>> searchCities(String query) async {
     final trimmed = query.trim();
@@ -24,23 +29,52 @@ class WeatherService {
       },
     );
 
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
-      throw WeatherServiceException('City search failed (${response.statusCode})');
+      throw WeatherServiceException(
+        'City search failed (${response.statusCode})',
+      );
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final results = data['results'] as List<dynamic>? ?? [];
 
-    return results.map((raw) {
-      final item = raw as Map<String, dynamic>;
-      return CityLocation(
-        name: item['name'] as String? ?? 'Unknown',
-        country: item['country'] as String? ?? '',
-        latitude: (item['latitude'] as num).toDouble(),
-        longitude: (item['longitude'] as num).toDouble(),
+    return results.map((raw) => _cityFromJson(raw as Map<String, dynamic>)).toList();
+  }
+
+  Future<CityLocation> reverseGeocode({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final uri = Uri.parse(_reverseGeocodingBase).replace(
+      queryParameters: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'language': 'en',
+        'format': 'json',
+      },
+    );
+
+    final response = await _get(uri);
+    if (response.statusCode != 200) {
+      throw WeatherServiceException(
+        'Could not resolve your location (${response.statusCode})',
       );
-    }).toList();
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final results = data['results'] as List<dynamic>? ?? [];
+
+    if (results.isEmpty) {
+      return CityLocation(
+        name: 'Current location',
+        country: '',
+        latitude: latitude,
+        longitude: longitude,
+      );
+    }
+
+    return _cityFromJson(results.first as Map<String, dynamic>);
   }
 
   Future<WeatherBundle> fetchWeather(CityLocation location) async {
@@ -56,7 +90,7 @@ class WeatherService {
       },
     );
 
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw WeatherServiceException(
         'Weather fetch failed (${response.statusCode})',
@@ -64,8 +98,20 @@ class WeatherService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final current = data['current'] as Map<String, dynamic>;
-    final daily = data['daily'] as Map<String, dynamic>;
+    final current = data['current'] as Map<String, dynamic>?;
+    final daily = data['daily'] as Map<String, dynamic>?;
+    final timezone = data['timezone'] as String?;
+    final timezoneAbbreviation =
+        data['timezone_abbreviation'] as String? ?? '';
+
+    if (current == null || daily == null || timezone == null) {
+      throw WeatherServiceException('Unexpected response from weather API.');
+    }
+
+    final localTime = parseLocationDateTime(
+      current['time'] as String,
+      timezone,
+    );
 
     final times = (daily['time'] as List).cast<String>();
     final maxTemps = (daily['temperature_2m_max'] as List).cast<num>();
@@ -74,9 +120,10 @@ class WeatherService {
 
     final forecasts = <DailyForecast>[];
     for (var i = 0; i < times.length; i++) {
+      final date = parseLocationDate(times[i], timezone);
       forecasts.add(
         DailyForecast(
-          date: DateTime.parse(times[i]),
+          date: date,
           maxTempC: maxTemps[i].toDouble(),
           minTempC: minTemps[i].toDouble(),
           weatherCode: codes[i].toInt(),
@@ -86,15 +133,45 @@ class WeatherService {
 
     return WeatherBundle(
       location: location,
+      timezone: timezone,
+      timezoneAbbreviation: timezoneAbbreviation,
       current: CurrentWeather(
         temperatureC: (current['temperature_2m'] as num).toDouble(),
         humidity: (current['relative_humidity_2m'] as num).toInt(),
         windSpeedKmh: (current['wind_speed_10m'] as num).toDouble(),
         weatherCode: (current['weather_code'] as num).toInt(),
-        time: DateTime.parse(current['time'] as String),
+        localTime: localTime,
+        timezoneAbbreviation: timezoneAbbreviation,
       ),
       daily: forecasts,
     );
+  }
+
+  CityLocation _cityFromJson(Map<String, dynamic> item) {
+    return CityLocation(
+      name: item['name'] as String? ?? 'Unknown',
+      country: item['country'] as String? ?? '',
+      latitude: (item['latitude'] as num).toDouble(),
+      longitude: (item['longitude'] as num).toDouble(),
+    );
+  }
+
+  Future<http.Response> _get(Uri uri) async {
+    try {
+      return await http.get(uri).timeout(_timeout);
+    } on TimeoutException {
+      throw WeatherServiceException(
+        'Request timed out. Check your internet connection.',
+      );
+    } on SocketException {
+      throw WeatherServiceException(
+        'No internet connection. Check your network and try again.',
+      );
+    } on HttpException {
+      throw WeatherServiceException(
+        'Network error while contacting the weather service.',
+      );
+    }
   }
 }
 
