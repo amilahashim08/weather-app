@@ -14,7 +14,11 @@ $env:PUB_CACHE = if ($env:PUB_CACHE) { $env:PUB_CACHE } else { "D:\pub-cache" }
 $env:TEMP = "D:\temp"
 $env:TMP = "D:\temp"
 New-Item -ItemType Directory -Force -Path $env:GRADLE_USER_HOME, $env:PUB_CACHE, $env:TEMP | Out-Null
-$env:Path = "C:\Users\hp\AppData\Local\flutter\bin;$sdk\platform-tools;$sdk\emulator;" + $env:Path
+$jbr = "C:\Program Files\Android\Android Studio\jbr"
+if (Test-Path $jbr) {
+    $env:JAVA_HOME = $jbr
+}
+$env:Path = "C:\Users\hp\AppData\Local\flutter\bin;$sdk\platform-tools;$sdk\emulator;$env:JAVA_HOME\bin;" + $env:Path
 
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
     Write-Error "Flutter not found. Install Flutter or add it to PATH. See RUN-ON-PHONE.md"
@@ -29,9 +33,9 @@ if (-not (Test-Path $env:ANDROID_HOME)) {
 }
 
 Write-Host "Checking devices..." -ForegroundColor Cyan
-& $flutter devices
+flutter devices
 
-$android = (& $flutter devices 2>&1 | Select-String "android")
+$android = (flutter devices 2>&1 | Select-String "android")
 if (-not $android) {
     Write-Host ""
     Write-Host "No Android device found." -ForegroundColor Yellow
@@ -45,5 +49,5 @@ if (-not $android) {
 
 Write-Host ""
 Write-Host "Starting app on Android..." -ForegroundColor Green
-& $flutter pub get
-& $flutter run
+flutter pub get
+flutter run
