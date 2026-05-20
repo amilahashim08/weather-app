@@ -6,6 +6,7 @@ import '../constants/default_location.dart';
 import '../models/weather.dart';
 import '../services/location_service.dart';
 import '../services/weather_service.dart';
+import '../utils/human_comfort_sensor.dart';
 
 /// State management with ChangeNotifier (Provider pattern).
 class WeatherProvider extends ChangeNotifier {
@@ -35,11 +36,58 @@ class WeatherProvider extends ChangeNotifier {
   WeatherBundle? _weather;
   WeatherBundle? get weather => _weather;
 
+  DateTime? _lastUpdated;
+  DateTime? get lastUpdated => _lastUpdated;
+
+  static const _staleAfter = Duration(minutes: 10);
+
   List<CityLocation> _searchResults = [];
   List<CityLocation> get searchResults => _searchResults;
 
   String _query = '';
   String get query => _query;
+
+  /// Set when user confirms they will follow precautions for the current alert.
+  String? _acknowledgedAlertKey;
+
+  /// True while unbearable conditions are active and user has not confirmed yet.
+  bool get shouldBlinkComfortAlert {
+    final bundle = _weather;
+    if (bundle == null) return false;
+    final reading = evaluateHumanComfort(bundle.current);
+    if (!reading.isUnbearable) return false;
+    return _acknowledgedAlertKey != _comfortAlertKey(bundle);
+  }
+
+  bool get precautionsConfirmed {
+    final bundle = _weather;
+    if (bundle == null) return false;
+    return _acknowledgedAlertKey == _comfortAlertKey(bundle);
+  }
+
+  void acknowledgePrecautions() {
+    final bundle = _weather;
+    if (bundle == null) return;
+    _acknowledgedAlertKey = _comfortAlertKey(bundle);
+    notifyListeners();
+  }
+
+  String _comfortAlertKey(WeatherBundle bundle) {
+    final reading = evaluateHumanComfort(bundle.current);
+    return '${bundle.location.displayName}|${reading.level.name}|'
+        '${bundle.current.temperatureC.round()}';
+  }
+
+  /// Fetches fresh outdoor data when user returns to the app (not while closed).
+  Future<void> refreshOnResume() async {
+    final bundle = _weather;
+    if (bundle == null) return;
+    if (_lastUpdated != null &&
+        DateTime.now().difference(_lastUpdated!) < _staleAfter) {
+      return;
+    }
+    await loadWeather(bundle.location);
+  }
 
   /// Loads Rawalpindi, Pakistan on startup — always shows weather immediately.
   Future<void> loadInitialWeather() async {
@@ -129,7 +177,14 @@ class WeatherProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final previousKey =
+          _weather != null ? _comfortAlertKey(_weather!) : null;
       _weather = await _service.fetchWeather(location);
+      _lastUpdated = DateTime.now();
+      final newKey = _comfortAlertKey(_weather!);
+      if (previousKey != null && previousKey != newKey) {
+        _acknowledgedAlertKey = null;
+      }
     } on WeatherServiceException catch (e) {
       _error = e.message;
     } catch (_) {

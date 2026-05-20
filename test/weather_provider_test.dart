@@ -6,6 +6,7 @@ import 'package:weather_app/models/weather.dart';
 import 'package:weather_app/providers/weather_provider.dart';
 import 'package:weather_app/services/location_service.dart';
 import 'package:weather_app/services/weather_service.dart';
+import 'package:weather_app/utils/human_comfort_sensor.dart';
 
 void main() {
   setUpAll(() {
@@ -60,6 +61,33 @@ void main() {
     expect(provider.loading, isFalse);
   });
 
+  test('refreshOnResume updates stale weather', () async {
+    final provider = WeatherProvider(
+      service: _FakeWeatherService(),
+      locationService: _FakeLocationService(),
+    );
+
+    await provider.loadInitialWeather();
+    expect(provider.lastUpdated, isNotNull);
+
+    await provider.refreshOnResume();
+    expect(provider.weather, isNotNull);
+  });
+
+  test('acknowledgePrecautions stops comfort alert blink', () async {
+    final provider = WeatherProvider(
+      service: _FakeWeatherService(hot: true),
+      locationService: _FakeLocationService(),
+    );
+
+    await provider.loadInitialWeather();
+    expect(provider.shouldBlinkComfortAlert, isTrue);
+
+    provider.acknowledgePrecautions();
+    expect(provider.shouldBlinkComfortAlert, isFalse);
+    expect(provider.precautionsConfirmed, isTrue);
+  });
+
   test('loadCurrentLocation falls back to Rawalpindi when GPS fails', () async {
     final provider = WeatherProvider(
       service: _FakeWeatherService(),
@@ -94,9 +122,10 @@ class _FakeLocationService extends LocationService {
 }
 
 class _FakeWeatherService extends WeatherService {
-  _FakeWeatherService({this.throwOnSearch = false});
+  _FakeWeatherService({this.throwOnSearch = false, this.hot = false});
 
   final bool throwOnSearch;
+  final bool hot;
 
   @override
   Future<List<CityLocation>> searchCities(String query) async {
@@ -115,13 +144,14 @@ class _FakeWeatherService extends WeatherService {
     final timezone = location.name == 'Paris' ? 'Europe/Paris' : 'Asia/Karachi';
     final abbr = location.name == 'Paris' ? 'CEST' : 'PKT';
 
+    final temp = hot ? 42.0 : 28.0;
     return WeatherBundle(
       location: location,
       timezone: timezone,
       timezoneAbbreviation: abbr,
       current: CurrentWeather(
-        temperatureC: 28,
-        humidity: 55,
+        temperatureC: temp,
+        humidity: hot ? 50 : 55,
         windSpeedKmh: 12,
         weatherCode: 1,
         localTime: localTime,

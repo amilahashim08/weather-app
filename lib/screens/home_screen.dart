@@ -8,8 +8,12 @@ import '../utils/animations.dart';
 import '../widgets/animated_loading.dart';
 import '../widgets/forecast_sliver_list.dart';
 import '../widgets/search_field.dart';
+import '../widgets/comfort_advisory_card.dart';
 import '../widgets/weather_details_card.dart';
 import '../widgets/google_surface_card.dart';
+import '../utils/human_comfort_sensor.dart';
+import '../widgets/temperature_alert_overlay.dart';
+import '../widgets/outdoor_sensor_info.dart';
 import '../widgets/weather_hero_header.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,12 +23,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<WeatherProvider>().loadInitialWeather();
     });
@@ -32,8 +37,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<WeatherProvider>().refreshOnResume();
+    }
   }
 
   @override
@@ -43,7 +56,14 @@ class _HomeScreenState extends State<HomeScreen> {
       body: AnimatedGradientBackground(
         child: Consumer<WeatherProvider>(
           builder: (context, provider, _) {
-            return RefreshIndicator(
+            final comfortLevel = provider.weather != null
+                ? evaluateHumanComfort(provider.weather!.current).level
+                : null;
+            final blinkAlert = provider.shouldBlinkComfortAlert;
+
+            return Stack(
+              children: [
+                RefreshIndicator(
               onRefresh: () => _onRefresh(provider),
               color: AppColors.googleBlue,
               backgroundColor: AppColors.surface,
@@ -99,6 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
+                    SliverToBoxAdapter(
+                      child: OutdoorSensorInfo(
+                        lastUpdated: provider.lastUpdated,
+                      ),
+                    ),
                     if (provider.refreshing)
                       const SliverToBoxAdapter(
                         child: Padding(
@@ -119,6 +144,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+            ),
+                if (comfortLevel != null)
+                  TemperatureAlertOverlay(
+                    level: comfortLevel,
+                    active: blinkAlert,
+                  ),
+              ],
             );
           },
         ),
@@ -194,6 +226,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       SliverToBoxAdapter(
         child: WeatherDetailsCard(bundle: bundle),
+      ),
+      SliverToBoxAdapter(
+        child: ComfortAdvisoryCard(bundle: bundle),
       ),
       const SliverPadding(padding: EdgeInsets.only(top: AppSpacing.lg)),
       const ForecastSectionHeader(),
