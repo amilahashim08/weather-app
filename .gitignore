@@ -11,7 +11,6 @@ coverage/
 # IDE
 .idea/
 *.iml
-.vscode/
 
 # Platform
 **/ios/Pods/
@@ -23,3 +22,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore

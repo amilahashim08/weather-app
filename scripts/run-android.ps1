@@ -9,10 +9,17 @@ $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "D:\Android\Sdk" }
 $avdHome = if ($env:ANDROID_AVD_HOME) { $env:ANDROID_AVD_HOME } else { "D:\Android\avd" }
 $env:ANDROID_HOME = $sdk
 $env:ANDROID_AVD_HOME = $avdHome
-$env:GRADLE_USER_HOME = if ($env:GRADLE_USER_HOME) { $env:GRADLE_USER_HOME } else { "D:\gradle" }
-$env:PUB_CACHE = if ($env:PUB_CACHE) { $env:PUB_CACHE } else { "D:\pub-cache" }
-$env:TEMP = "D:\temp"
-$env:TMP = "D:\temp"
+# Use E: for Gradle cache — D:\gradle often fills up and corrupts metadata.bin
+$env:GRADLE_USER_HOME = if ($env:GRADLE_USER_HOME) { $env:GRADLE_USER_HOME } else { "E:\gradle" }
+$env:PUB_CACHE = if ($env:PUB_CACHE) { $env:PUB_CACHE } else { "E:\pub-cache" }
+$buildTarget = "E:\weather-app-build"
+$buildLink = Join-Path $ProjectRoot "build"
+New-Item -ItemType Directory -Force -Path $buildTarget | Out-Null
+if (-not (Test-Path $buildLink)) {
+    cmd /c mklink /J "`"$buildLink`"" "`"$buildTarget`"" 2>$null | Out-Null
+}
+$env:TEMP = "E:\temp"
+$env:TMP = "E:\temp"
 New-Item -ItemType Directory -Force -Path $env:GRADLE_USER_HOME, $env:PUB_CACHE, $env:TEMP | Out-Null
 $jbr = "C:\Program Files\Android\Android Studio\jbr"
 if (Test-Path $jbr) {
